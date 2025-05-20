@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
+  
 <head>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+
+<script>
+  // Your Firebase config — replace with your own from Firebase Console
+  const firebaseConfig = {
+    apiKey: "AIzaSyDEq-mHxMtGW1LxSSqDDssVB_o0kBk3v3g",
+    authDomain: "final-project-f5605.firebaseapp.com",
+    projectId: "final-project-f5605", 
+    // ... other config fields if needed
+  };
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+</script>
+
+
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cambright Placement Test</title>
@@ -26,12 +46,50 @@
       <input type="text" id="pinInput" placeholder="Enter exam code" required />
 
       <div id="pin-error" style="color: red; display: none;">Invalid PIN</div>
-      <div id="pinShow"></div>
 
       <button type="submit" id="startBtn" class="btn-primary">Start Test</button>
     </form>
   </div>
 
+<script>
+  // Welcome page (index.html)
+  const BASE_URL = "https://cambright-placement-test.onrender.com";
+
+document.getElementById("startBtn").addEventListener("click", async () => {
+  const name = document.getElementById("name").value.trim();
+  const passport = document.getElementById("passport").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const code = document.getElementById("code").value.trim();
+
+  if (!name || !passport || !email || !code) {
+    return alert("Please fill in all fields.");
+  }
+
+  try {
+    const res = await fetch(`${BASE_URL}/validate-code/${code}`);
+    const data = await res.json();
+
+    if (!data.valid) {
+      alert("Invalid or expired code.");
+      return;
+    }
+
+    // Store in sessionStorage for use in exam page
+    sessionStorage.setItem("name", name);
+    sessionStorage.setItem("passport", passport);
+    sessionStorage.setItem("email", email);
+    sessionStorage.setItem("code", code);
+
+    // Redirect to exam page
+    window.location.href = "exam.html";
+  } catch (err) {
+    alert("Error validating code.");
+    console.error(err);
+  }
+});
+
+</script>
+  
   <!-- JS file loaded last -->
   <script src="index.js" defer></script>
 </body>
