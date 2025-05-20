@@ -1,6 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
+  
 <head>
+
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+<script>
+  function closeModal() {
+  document.getElementById("modal").style.display = "none";
+  document.getElementById("saveMessage").style.display = "none"; // hide "Saved!" message
+}
+
+function printSubmission() {
+  const name = document.getElementById("modalName").textContent;
+  const email = document.getElementById("modalEmail").textContent;
+  const passport = document.getElementById("modalPassport").textContent;
+  const mcq = document.getElementById("modalMcq").textContent;
+  const writing = document.getElementById("modalWriting").value;
+  const score = document.getElementById("modalScore").value;
+
+  const win = window.open('', '', 'height=700,width=700');
+  win.document.write(`<h2>${name} - Exam Report</h2>`);
+  win.document.write(`<p><strong>Email:</strong> ${email}<br>`);
+  win.document.write(`<strong>Passport:</strong> ${passport}<br>`);
+  win.document.write(`<strong>MCQ Score:</strong> ${mcq}/26<br>`);
+  win.document.write(`<strong>Writing Score:</strong> ${score}/20</p>`);
+  win.document.write(`<h3>Writing Answer</h3><pre>${writing}</pre>`);
+  win.document.close();
+  win.print();
+}
+function downloadDoc() {
+  const name = document.getElementById("modalName").textContent;
+  const email = document.getElementById("modalEmail").textContent;
+  const passport = document.getElementById("modalPassport").textContent;
+  const mcq = document.getElementById("modalMcq").textContent;
+  const writing = document.getElementById("modalWriting").value;
+  const score = document.getElementById("modalScore").value;
+
+  const content = `
+    <h2>${name} - Exam Report</h2>
+    <p><strong>Email:</strong> ${email}<br>
+    <strong>Passport:</strong> ${passport}<br>
+    <strong>MCQ Score:</strong> ${mcq}/26<br>
+    <strong>Writing Score:</strong> ${score}/20</p>
+    <h3>Writing Answer</h3>
+    <pre>${writing}</pre>
+  `;
+
+  const blob = new Blob([content], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${name.replace(/\s+/g, '_')}_Exam.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDEq-mHxMtGW1LxSSqDDssVB_o0kBk3v3g",
+    authDomain: "final-project-f5605.firebaseapp.com",
+    projectId: "final-project-f5605", 
+   };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  </script>
+
+
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cambright Admin Dashboard</title>
@@ -37,7 +104,7 @@
   <h2>Submissions</h2>
   <table>
     <thead>
-      <tr><th>Name</th><th>Email</th><th>MCQ</th><th>Writing</th><th>Total</th><th>Action</th></tr>
+<tr><th>Name</th><th>Email</th><th>Passport</th><th>MCQ</th><th>Writing</th><th>Total</th><th>Action</th><th>Video</th></tr>
     </thead>
     <tbody id="submissionTable"></tbody>
   </table>
@@ -48,6 +115,7 @@
   <div class="modal-box">
     <h3 id="modalName"></h3>
     <p>Email: <span id="modalEmail"></span></p>
+    <p>Passport: <span id="modalPassport"></span></p>
     <p>MCQ Score: <span id="modalMcq"></span>/26</p>
     <h4>Writing Answer:</h4>
     <textarea id="modalWriting" readonly></textarea>
@@ -63,133 +131,148 @@
 
 <script>
   let currentId = null;
+  let countdownInterval;
 
-  // ---------------- PIN GENERATOR ----------------
-  function generatePin() {
-    const pin = String(Math.floor(100000 + Math.random() * 900000));
-    const expires = Date.now() + 30 * 60 * 1000;
-    localStorage.setItem('examPin', JSON.stringify({ pin, expires }));
 
+  
+    async function fetchSubsFromFirestore() {
+  const snapshot = await db.collection("students").get();
+  const subs = [];
+  snapshot.forEach(doc => {
+    subs.push({ id: doc.id, ...doc.data() });
+  });
+  renderTable(subs);
+}
+
+
+  function startCountdown() {
+    clearInterval(countdownInterval);
+    const pinData = JSON.parse(localStorage.getItem('examPin'));
+    if (!pinData) return;
+
+    countdownInterval = setInterval(() => {
+      const now = Date.now();
+      const diff = pinData.expires - now;
+
+      if (diff <= 0) {
+        document.getElementById("pinCountdown").textContent = "Expired";
+        clearInterval(countdownInterval);
+        return;
+      }
+
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      document.getElementById("pinCountdown").textContent = `${minutes}:${seconds.toString().padStart(2, '0')} remaining`;
+    }, 1000);
+  }
+  async function viewVideo(subId) {
+  const doc = await db.collection("students").doc(subId).get();
+  if (!doc.exists) {
+    alert("Submission not found.");
+    return;
+  }
+  const sub = doc.data();
+  if (sub.videoUrl) {
+    window.open(sub.videoUrl, '_blank');
+  } else {
+    alert("No video available for this submission.");
+  }
+}
+
+function renderTable(subs) {
+  const table = document.getElementById("submissionTable");
+  table.innerHTML = "";
+  if (subs.length === 0) {
+  table.innerHTML = `<tr><td colspan="8">No submissions found.</td></tr>`;
+  return;
+}
+
+subs.forEach(sub => {
+  const total = (typeof sub.mcqScore === 'number' && typeof sub.writingScore === 'number')
+    ? (sub.mcqScore + sub.writingScore)
+    : "—";
+
+  const writing = sub.writingScore != null ? `${sub.writingScore}/20` : "not graded";
+
+  table.innerHTML += `
+    <tr>
+      <td>${sub.name || ""}</td>
+      <td>${sub.email || ""}</td>
+      <td>${sub.passport || ""}</td>
+      <td>${sub.mcqScore || 0}/26</td>
+      <td>${writing}</td>
+      <td>${total}</td>
+
+      <td><button onclick="openModal('${sub.id}')">Open</button></td>
+      <td><button onclick="viewVideo('${sub.id}')">View Video</button></td>
+    </tr>`;
+});
+
+
+  localStorage.setItem("submissions", JSON.stringify(subs)); // optional local cache
+
+}
+async function saveScore() {
+  const val = Number(document.getElementById("modalScore").value);
+  if (isNaN(val) || val < 0 || val > 20) {
+    alert("Enter a valid score (0–20)");
+    return;
+  }
+
+  await db.collection("students").doc(currentId).update({
+    writingScore: val
+  });
+
+  document.getElementById("saveMessage").style.display = "block";
+  closeModal();
+}
+async function openModal(id) {
+  currentId = id;
+  const doc = await db.collection("students").doc(id).get();
+  if (!doc.exists) return;
+
+  const sub = doc.data();
+  document.getElementById("modalName").textContent = sub.name || "";
+  document.getElementById("modalEmail").textContent = sub.email || "";
+  document.getElementById("modalPassport").textContent = sub.passport || "";
+  document.getElementById("modalMcq").textContent = sub.mcqScore || 0;
+  document.getElementById("modalWriting").value = sub.writingAnswer || "";
+  document.getElementById("modalScore").value = sub.writingScore ?? "";
+  document.getElementById("modal").style.display = "flex";
+}
+
+
+// No PIN creation here — just load submissions
+window.onload = () => {
+  const saved = localStorage.getItem('examPin');
+  if (saved) {
+    const { pin } = JSON.parse(saved);
     document.getElementById("pinDisplay").textContent = "PIN: " + pin;
     startCountdown();
   }
 
-  function startCountdown() {
-    clearInterval(window.pinTimer);
-    window.pinTimer = setInterval(() => {
-      const data = JSON.parse(localStorage.getItem("examPin") || "null");
-      const display = document.getElementById("pinCountdown");
+  fetchSubsFromFirestore();
+};
+  
+    async function generatePin() {
+  const pin = String(Math.floor(100000 + Math.random() * 900000)); // Random 6-digit
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
-      if (!data) { display.textContent = "     "; clearInterval(window.pinTimer); return; }
-
-      const diff = data.expires - Date.now();
-      if (diff <= 0) {
-        localStorage.removeItem("examPin");
-        display.textContent = "(expired)";
-        clearInterval(window.pinTimer);
-      } else {
-        const min = Math.floor(diff / 60000);
-        const sec = Math.floor((diff % 60000) / 1000);
-        display.textContent = `(expires in ${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')})`;
-      }
-    }, 1000);
-  }
-
-  // ---------------- DATA RENDER ----------------
-  const table = document.getElementById("submissionTable");
-  function getSubs() {
-    return JSON.parse(localStorage.getItem("submissions") || "[]");
-  }
-
-  function saveSubs(data) {
-    localStorage.setItem("submissions", JSON.stringify(data));
-  }
-
-  function renderTable() {
-    const subs = getSubs();
-    table.innerHTML = "";
-    subs.forEach(sub => {
-      const total = sub.writingScore != null ? (sub.writingScore + sub.mcqScore) : "—"; 
-      const writing = sub.writingScore != null ? `${sub.writingScore}/20` : "⏳ not graded";
-      table.innerHTML += `
-        <tr>
-          <td>${sub.name}</td>
-          <td>${sub.email}</td>
-          <td>${sub.mcqScore}/26</td>
-          <td>${writing}</td>
-          <td>${total}</td>
-          <td><button onclick="openModal('${sub.id}')">Open</button></td>
-        </tr>`;
+  try {
+    await db.collection("accessPins").doc(pin).set({
+      expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt)
     });
+
+    localStorage.setItem("examPin", JSON.stringify({ pin, expires: expiresAt.getTime() }));
+
+    document.getElementById("pinDisplay").textContent = "PIN: " + pin;
+    startCountdown();
+  } catch (error) {
+    console.error("Error saving PIN to Firestore:", error);
+    alert("Failed to generate PIN.");
   }
+}
 
-  // ---------------- MODAL LOGIC ----------------
-  function openModal(id) {
-    const sub = getSubs().find(s => s.id === id);
-    if (!sub) return;
-    currentId = id;
-
-    document.getElementById("modalName").textContent = sub.name;
-    document.getElementById("modalEmail").textContent = sub.email;
-    document.getElementById("modalMcq").textContent = sub.mcqScore;
-    document.getElementById("modalWriting").value = sub.writingAnswer || "";
-    document.getElementById("modalScore").value = sub.writingScore ?? "";
-    document.getElementById("saveMessage").style.display = "none";
-    document.getElementById("modal").style.display = "flex";
-  }
-
-  function closeModal() {
-    document.getElementById("modal").style.display = "none";
-  }
-
-  function saveScore() {
-    const val = Number(document.getElementById("modalScore").value);
-    if (isNaN(val) || val < 0 || val > 20) {
-      alert("Enter a score from 0 to 20");
-      return;
-    }
-    const subs = getSubs();
-    const sub = subs.find(s => s.id === currentId);
-    if (!sub) return;
-    sub.writingScore = val;
-    saveSubs(subs);
-    renderTable();
-    document.getElementById("saveMessage").style.display = "block";
-  }
-
-  // ---------------- EXPORT LOGIC ----------------
-  function printSubmission() {
-    const w = window.open('', '', 'width=800,height=600');
-    const text = document.getElementById("modalWriting").value;
-    w.document.write(`<pre>${text.replace(/</g, "&lt;")}</pre>`);
-    w.document.close(); w.focus(); w.print(); w.close();
-  }
-
-  function downloadDoc() {
-    const name = document.getElementById("modalName").textContent;
-    const text = document.getElementById("modalWriting").value;
-    const html = `<html><body><pre>${text.replace(/</g, "&lt;")}</pre></body></html>`;
-    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${name.replace(/\s+/g, "_")}_submission.doc`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
-  // ---------------- INITIALIZATION ----------------
-  renderTable();
-  startCountdown();
-
-  // Demo Data (run once)
-  if (!getSubs().length) {
-    saveSubs([
-      { id: "1", name: "Alice Smith", email: "alice@example.com", mcqScore: 20, writingAnswer: "My opinion is...", writingScore: null },
-      { id: "2", name: "John Doe", email: "john@example.com", mcqScore: 24, writingAnswer: "In the future...", writingScore: null }
-    ]);
-    renderTable();
-  }
 </script>
 </body>
 </html>
