@@ -56,7 +56,6 @@ function goToReading()   { show("reading-section"); }
 function goToWriting()   { show("writing-section"); }
 function goToVideo()     { show("video-section"); }
 
-async function finishExam() {
   gradeMCQ(); // grade before finishing
 
   // Get answers now to capture user input at finish time
@@ -219,6 +218,9 @@ async function finishExam() {
   alert("Exam submitted successfully!");
   window.location.href = "end.html";
 }
+
+const studentId = localStorage.getItem("studentId");
+const studentInfo = JSON.parse(localStorage.getItem("currentStudent") || '{}');
 
 
 
