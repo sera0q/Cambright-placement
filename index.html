@@ -51,58 +51,165 @@
     </form>
   </div>
 
-<script>
-  // Welcome page (index.html)
-  const BASE_URL = "https://cambright-placement-test.onrender.com";
+  <script>
+    document.getElementById("welcome-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-document.getElementById("startBtn").addEventListener("click", async () => {
-  const name = document.getElementById("studentName").value.trim();
-  const passport = document.getElementById("studentPassport").value.trim();
-  const email = document.getElementById("studentEmail").value.trim();
-  const code = document.getElementById("pinInput").value.trim();
+      const name = document.getElementById("studentName").value.trim();
+      const passport = document.getElementById("studentPassport").value.trim();
+      const email = document.getElementById("studentEmail").value.trim();
+      const pin = document.getElementById("pinInput").value.trim();
 
-  if (!name || !passport || !email || !code) {
-    return alert("Please fill in all fields.");
-  }
+      if (!name || !passport || !email || !pin) {
+        alert("Please fill in all fields.");
+        return;
+      }
 
-  try {
-    const res = await fetch(`${BASE_URL}/validate-code/${code}`);
-    const data = await res.json();
+      try {
+        // Add student to Firestore
+        const docRef = await db.collection("students").add({
+          name,
+          passport,
+          email,
+          pin,
+          startTime: firebase.firestore.Timestamp.now()
+        });
 
-    if (!data.valid) {
-      alert("Invalid or expired code.");
-      return;
-    }
+        const studentId = docRef.id;
 
-    // Store in sessionStorage for use in exam page
-   // Create a new student document in Firestore
-const studentRef = await db.collection("students").add({
-  name,
-  passport,
-  email,
-  pin: code,
-  startTime: firebase.firestore.Timestamp.now()
-});
+        // Store to localStorage for exam.html to use
+        localStorage.setItem("studentId", studentId);
+        localStorage.setItem("currentStudent", JSON.stringify({ name, passport, email }));
 
-// Save student ID to localStorage (required for exam.html)
-localStorage.setItem("studentId", studentRef.id);
-
-// You can still save name/passport/email if needed:
-localStorage.setItem("currentStudent", JSON.stringify({ name, passport, email }));
-
-// Redirect to exam
-window.location.href = "exam.html";
-
-    // Redirect to exam page
-  } catch (err) {
-    alert("Error validating code.");
-    console.error(err);
-  }
-});
-
-</script>
+        // Redirect to the exam page
+        window.location.href = "exam.html";
+      } catch (err) {
+        console.error("Error adding student:", err);
+        alert("Something went wrong. Please try again.");
+      }
+    });
+  </script>
   
   <!-- JS file loaded last -->
   <script src="index.js" defer></script>
 </body>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    // Buttons
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const redoBtn = document.getElementById("redoBtn");
+    const playback = document.getElementById("playback");
+    const finishBtn = document.getElementById("finishBtn");
+  
+    // Recording setup
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let chunks = [];
+    let videoBlob = null;
+  
+    async function initCamera() {
+      if (mediaStream) return;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('preview').srcObject = mediaStream;
+      } catch {
+        alert('Webcam/microphone access denied.');
+      }
+    }
+  
+    function startRecording() {
+      initCamera().then(() => {
+        chunks = [];
+        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'video/webm;codecs=vp9,opus' });
+        mediaRecorder.ondataavailable = e => chunks.push(e.data);
+        mediaRecorder.onstop = handleRecordingStop;
+        mediaRecorder.start();
+  
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        redoBtn.disabled = true;
+  
+        setTimeout(() => {
+          if (mediaRecorder?.state === 'recording') stopRecording();
+        }, 60000);
+      });
+    }
+  
+    function stopRecording() {
+      if (mediaRecorder?.state === 'recording') {
+        mediaRecorder.stop();
+        stopBtn.disabled = true;
+      }
+    }
+  
+    function handleRecordingStop() {
+      videoBlob = new Blob(chunks, { type: 'video/webm' });
+      playback.src = URL.createObjectURL(videoBlob);
+      playback.classList.remove('hidden');
+      redoBtn.disabled = false;
+    }
+  
+    function redoRecording() {
+      playback.classList.add('hidden');
+      playback.src = '';
+      videoBlob = null;
+  
+      startBtn.disabled = false;
+      redoBtn.disabled = true;
+    }
+  
+    startBtn.onclick = startRecording;
+    stopBtn.onclick = stopRecording;
+    redoBtn.onclick = redoRecording;
+  
+    finishBtn.onclick = async function finishExam() {
+      const studentId = localStorage.getItem("studentId");
+      if (!studentId) {
+        alert("Student ID not found. Please restart the exam.");
+        window.location.href = "index.html";
+        return;
+      }
+  
+      const writingAns = document.querySelector("textarea")?.value || '';
+      let videoUrl = null;
+  
+      try {
+        if (videoBlob) {
+          const formData = new FormData();
+          formData.append("file", videoBlob);
+          formData.append("upload_preset", "exam_videos");
+          formData.append("cloud_name", "dihabha4b");
+  
+          const res = await fetch("https://api.cloudinary.com/v1_1/dihabha4b/video/upload", {
+            method: "POST",
+            body: formData
+          });
+  
+          const data = await res.json();
+          videoUrl = data.secure_url;
+        }
+  
+        const mcqScore = window.mcqScore || 0;
+  
+        await db.collection("students").doc(studentId).set({
+          mcqScore,
+          writingAnswer: writingAns,
+          videoUrl,
+          submittedAt: firebase.firestore.Timestamp.now()
+        }, { merge: true });
+  
+        alert("Exam submitted successfully!");
+        window.location.href = "end.html";
+  
+      } catch (err) {
+        console.error("Submission failed:", err);
+        alert("Something went wrong during submission.");
+      }
+    };
+  });
+  </script>
+  
+
 </html>
