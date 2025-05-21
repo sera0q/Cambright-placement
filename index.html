@@ -56,10 +56,10 @@
   const BASE_URL = "https://cambright-placement-test.onrender.com";
 
 document.getElementById("startBtn").addEventListener("click", async () => {
-  const name = document.getElementById("name").value.trim();
-  const passport = document.getElementById("passport").value.trim();
-  const email = document.getElementById("email").value.trim();
-  const code = document.getElementById("code").value.trim();
+  const name = document.getElementById("studentName").value.trim();
+  const passport = document.getElementById("studentPassport").value.trim();
+  const email = document.getElementById("studentEmail").value.trim();
+  const code = document.getElementById("pinInput").value.trim();
 
   if (!name || !passport || !email || !code) {
     return alert("Please fill in all fields.");
